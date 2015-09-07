@@ -1,0 +1,10 @@
+[package]
+name = "pyramid_transform"
+version = "0.1.0"
+authors = ["Fredrik Noren <fredrik.jw.noren@gmail.com>"]
+
+[dependencies]
+cgmath = "0.2.0"
+
+[dependencies.pyramid]
+path = "../pyramid"
