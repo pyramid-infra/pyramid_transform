@@ -22,56 +22,53 @@ impl TransformSubSystem {
             cached_transforms: HashMap::new()
         }
     }
-    fn get_entity_transform(&mut self, system: &mut ISystem, entity_id: &EntityId) -> Result<Matrix4<f32>, DocError> {
+    fn get_entity_transform(&mut self, system: &mut ISystem, entity_id: &EntityId) -> Matrix4<f32> {
         {
             match self.cached_transforms.get(entity_id) {
-                Some(v) => return Ok(v.clone()),
+                Some(v) => return v.clone(),
                 None => {}
             };
         }
 
         let expr = {
-            (&*try!(system.get_property_expression(&entity_id, "transform"))).clone()
+            (&*system.get_property_expression(&entity_id, "transform").unwrap()).clone()
         };
         let mat = {
-            let mat = try!(self.pon_to_matrix(system, entity_id, &expr));
-            try!(system.set_property(entity_id, "transformed", mat.to_pon()));
+            let mat = self.pon_to_matrix(system, entity_id, &expr);
+            system.set_property(entity_id, "transformed", mat.to_pon()).unwrap();
             mat
         };
 
         match self.cached_transforms.entry(*entity_id) {
             Entry::Occupied(_) => unreachable!(),
-            Entry::Vacant(v) => Ok(v.insert(mat).clone())
+            Entry::Vacant(v) => v.insert(mat).clone()
         }
     }
 
-    fn pon_to_matrix(&mut self, system: &mut ISystem, owner: &EntityId, pon: &Pon) -> Result<Matrix4<f32>, DocError> {
+    fn pon_to_matrix(&mut self, system: &mut ISystem, owner: &EntityId, pon: &Pon) -> Matrix4<f32> {
         match pon {
             &Pon::TypedPon(box TypedPon { ref type_name, ref data }) => {
                 match type_name.as_str() {
                     "mul" => {
-                        let arr = try!(data.translate::<&Vec<Pon>>());
+                        let arr = data.translate::<&Vec<Pon>>().unwrap();
                         let mut a = Matrix4::identity();
                         for b in arr {
-                            let mat = try!(self.pon_to_matrix(system, owner, b));
+                            let mat = self.pon_to_matrix(system, owner, b);
                             a = a * mat;
                         }
-                        return Ok(a);
+                        return a;
                     },
-                    _ => Ok(try!(try!(system.resolve_pon_dependencies(owner, pon)).translate()))
+                    _ => system.resolve_pon_dependencies(owner, pon).unwrap().translate().unwrap()
                 }
             },
             &Pon::DependencyReference(ref named_prop_ref) => {
                 if &named_prop_ref.property_key == "transform" {
-                    let prop_ref = try!(system.resolve_named_prop_ref(owner, named_prop_ref));
-                    return match self.get_entity_transform(system, &prop_ref.entity_id) {
-                        Ok(mat) => Ok(mat.clone()),
-                        Err(err) => Err(err)
-                    }
+                    let prop_ref = system.resolve_named_prop_ref(owner, named_prop_ref).unwrap();
+                    return self.get_entity_transform(system, &prop_ref.entity_id).clone();
                 }
-                Ok(try!(try!(system.resolve_pon_dependencies(owner, pon)).translate()))
+                system.resolve_pon_dependencies(owner, pon).unwrap().translate().unwrap()
             },
-            _ => Ok(try!(try!(system.resolve_pon_dependencies(owner, pon)).translate()))
+            _ => system.resolve_pon_dependencies(owner, pon).unwrap().translate().unwrap()
         }
     }
 
@@ -85,7 +82,7 @@ impl ISubSystem for TransformSubSystem {
             self.cached_transforms.remove(&pr.entity_id);
         }
         for pr in prop_refs.iter().filter(|pr| pr.property_key == "transform") {
-            self.get_entity_transform(system, &pr.entity_id).unwrap();
+            self.get_entity_transform(system, &pr.entity_id);
         }
     }
 }
