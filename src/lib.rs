@@ -31,7 +31,13 @@ impl TransformSubSystem {
         }
 
         let expr = {
-            (&*system.get_property_expression(&entity_id, "transform").unwrap()).clone()
+            match system.get_property_expression(&entity_id, "transform") {
+                Ok(expression) => expression.clone(),
+                Err(err) => {
+                    println!("Couldn't get property 'transform': {:?}", err);
+                    return Matrix4::identity();
+                }
+            }
         };
         let mat = {
             let mat = self.pon_to_matrix(system, entity_id, &expr);
@@ -46,6 +52,15 @@ impl TransformSubSystem {
     }
 
     fn pon_to_matrix(&mut self, system: &mut ISystem, owner: &EntityId, pon: &Pon) -> Matrix4<f32> {
+        let resolved_pon_dependency = |system: &mut ISystem| {
+            match system.resolve_pon_dependencies(owner, pon).unwrap().translate::<Matrix4<f32>>() {
+                Ok(mat) => mat,
+                Err(err) => {
+                    println!("Unable to resolve pon dependency: {}", err.to_string());
+                    Matrix4::identity()
+                }
+            }
+        };
         match pon {
             &Pon::TypedPon(box TypedPon { ref type_name, ref data }) => {
                 match type_name.as_str() {
@@ -58,7 +73,7 @@ impl TransformSubSystem {
                         }
                         return a;
                     },
-                    _ => system.resolve_pon_dependencies(owner, pon).unwrap().translate().unwrap()
+                    _ => resolved_pon_dependency(system)
                 }
             },
             &Pon::DependencyReference(ref named_prop_ref) => {
@@ -66,9 +81,9 @@ impl TransformSubSystem {
                     let prop_ref = system.resolve_named_prop_ref(owner, named_prop_ref).unwrap();
                     return self.get_entity_transform(system, &prop_ref.entity_id).clone();
                 }
-                system.resolve_pon_dependencies(owner, pon).unwrap().translate().unwrap()
+                resolved_pon_dependency(system)
             },
-            _ => system.resolve_pon_dependencies(owner, pon).unwrap().translate().unwrap()
+            _ => resolved_pon_dependency(system)
         }
     }
 
