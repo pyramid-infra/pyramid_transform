@@ -54,7 +54,7 @@ impl TransformSubSystem {
 
     fn pon_to_matrix(&mut self, document: &mut Document, owner: &EntityId, pon: &Pon) -> Matrix4<f32> {
         let resolved_pon_dependency = |document: &mut Document| {
-            match document.resolve_pon_dependencies(owner, pon).unwrap().translate::<Matrix4<f32>>() {
+            match document.resolve_pon_dependencies(owner, pon).unwrap().translate::<Matrix4<f32>>(&mut TranslateContext::from_doc(document)) {
                 Ok(mat) => mat,
                 Err(err) => {
                     println!("Unable to resolve pon dependency: {}", err.to_string());
@@ -66,7 +66,7 @@ impl TransformSubSystem {
             &Pon::TypedPon(box TypedPon { ref type_name, ref data }) => {
                 match type_name.as_str() {
                     "mul" => {
-                        let arr = data.translate::<&Vec<Pon>>().unwrap();
+                        let arr = data.translate::<&Vec<Pon>>(&mut TranslateContext::from_doc(document)).unwrap();
                         let mut a = Matrix4::identity();
                         for b in arr {
                             let mat = self.pon_to_matrix(document, owner, b);
