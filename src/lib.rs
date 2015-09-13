@@ -11,6 +11,7 @@ use cgmath::*;
 use pyramid::interface::*;
 use pyramid::pon::*;
 use pyramid::document::*;
+use pyramid::system::*;
 
 pub struct TransformSubSystem {
     cached_transforms: HashMap<EntityId, Matrix4<f32>>
@@ -22,7 +23,7 @@ impl TransformSubSystem {
             cached_transforms: HashMap::new()
         }
     }
-    fn get_entity_transform(&mut self, system: &mut ISystem, entity_id: &EntityId) -> Matrix4<f32> {
+    fn get_entity_transform(&mut self, document: &mut Document, entity_id: &EntityId) -> Matrix4<f32> {
         {
             match self.cached_transforms.get(entity_id) {
                 Some(v) => return v.clone(),
@@ -31,7 +32,7 @@ impl TransformSubSystem {
         }
 
         let expr = {
-            match system.get_property_expression(&entity_id, "transform") {
+            match document.get_property_expression(&entity_id, "transform") {
                 Ok(expression) => expression.clone(),
                 Err(err) => {
                     println!("Couldn't get property 'transform': {:?}", err);
@@ -40,8 +41,8 @@ impl TransformSubSystem {
             }
         };
         let mat = {
-            let mat = self.pon_to_matrix(system, entity_id, &expr);
-            system.set_property(entity_id, "transformed", mat.to_pon()).unwrap();
+            let mat = self.pon_to_matrix(document, entity_id, &expr);
+            document.set_property(entity_id, "transformed", mat.to_pon()).unwrap();
             mat
         };
 
@@ -51,9 +52,9 @@ impl TransformSubSystem {
         }
     }
 
-    fn pon_to_matrix(&mut self, system: &mut ISystem, owner: &EntityId, pon: &Pon) -> Matrix4<f32> {
-        let resolved_pon_dependency = |system: &mut ISystem| {
-            match system.resolve_pon_dependencies(owner, pon).unwrap().translate::<Matrix4<f32>>() {
+    fn pon_to_matrix(&mut self, document: &mut Document, owner: &EntityId, pon: &Pon) -> Matrix4<f32> {
+        let resolved_pon_dependency = |document: &mut Document| {
+            match document.resolve_pon_dependencies(owner, pon).unwrap().translate::<Matrix4<f32>>() {
                 Ok(mat) => mat,
                 Err(err) => {
                     println!("Unable to resolve pon dependency: {}", err.to_string());
@@ -68,22 +69,22 @@ impl TransformSubSystem {
                         let arr = data.translate::<&Vec<Pon>>().unwrap();
                         let mut a = Matrix4::identity();
                         for b in arr {
-                            let mat = self.pon_to_matrix(system, owner, b);
+                            let mat = self.pon_to_matrix(document, owner, b);
                             a = a * mat;
                         }
                         return a;
                     },
-                    _ => resolved_pon_dependency(system)
+                    _ => resolved_pon_dependency(document)
                 }
             },
             &Pon::DependencyReference(ref named_prop_ref) => {
                 if &named_prop_ref.property_key == "transform" {
-                    let prop_ref = system.resolve_named_prop_ref(owner, named_prop_ref).unwrap();
-                    return self.get_entity_transform(system, &prop_ref.entity_id).clone();
+                    let prop_ref = document.resolve_named_prop_ref(owner, named_prop_ref).unwrap();
+                    return self.get_entity_transform(document, &prop_ref.entity_id).clone();
                 }
-                resolved_pon_dependency(system)
+                resolved_pon_dependency(document)
             },
-            _ => resolved_pon_dependency(system)
+            _ => resolved_pon_dependency(document)
         }
     }
 
@@ -92,12 +93,12 @@ impl TransformSubSystem {
 
 impl ISubSystem for TransformSubSystem {
 
-    fn on_property_value_change(&mut self, system: &mut ISystem, prop_refs: &Vec<PropRef>) {
+    fn on_property_value_change(&mut self, system: &mut System, prop_refs: &Vec<PropRef>) {
         for pr in prop_refs.iter().filter(|pr| pr.property_key == "transform") {
             self.cached_transforms.remove(&pr.entity_id);
         }
         for pr in prop_refs.iter().filter(|pr| pr.property_key == "transform") {
-            self.get_entity_transform(system, &pr.entity_id);
+            self.get_entity_transform(system.document_mut(), &pr.entity_id);
         }
     }
 }
