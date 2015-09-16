@@ -32,7 +32,7 @@ impl TransformSubSystem {
         }
 
         let expr = {
-            match document.get_property_expression(&entity_id, "transform") {
+            match document.get_property(&entity_id, "transform") {
                 Ok(expression) => expression.clone(),
                 Err(err) => {
                     println!("Couldn't get property 'transform': {:?}", err);
@@ -54,7 +54,10 @@ impl TransformSubSystem {
 
     fn pon_to_matrix(&mut self, document: &mut Document, owner: &EntityId, pon: &Pon) -> Matrix4<f32> {
         let resolved_pon_dependency = |document: &mut Document| {
-            match document.resolve_pon_dependencies(owner, pon).unwrap().translate::<Matrix4<f32>>(&mut TranslateContext::from_doc(document)) {
+            let r = pon.as_resolved(|pon| {
+                pon.translate::<Matrix4<f32>>(&mut TranslateContext::from_doc(document))
+            });
+            match r {
                 Ok(mat) => mat,
                 Err(err) => {
                     println!("Unable to resolve pon dependency: {}", err.to_string());
@@ -66,18 +69,19 @@ impl TransformSubSystem {
             &Pon::TypedPon(box TypedPon { ref type_name, ref data }) => {
                 match type_name.as_str() {
                     "mul" => {
-                        let arr = data.translate::<&Vec<Pon>>(&mut TranslateContext::from_doc(document)).unwrap();
-                        let mut a = Matrix4::identity();
-                        for b in arr {
-                            let mat = self.pon_to_matrix(document, owner, b);
-                            a = a * mat;
-                        }
-                        return a;
+                        data.as_array(|arr| {
+                            let mut a = Matrix4::identity();
+                            for b in arr {
+                                let mat = self.pon_to_matrix(document, owner, b);
+                                a = a * mat;
+                            }
+                            return Ok(a);
+                        }).unwrap()
                     },
                     _ => resolved_pon_dependency(document)
                 }
             },
-            &Pon::DependencyReference(ref named_prop_ref) => {
+            &Pon::DependencyReference(ref named_prop_ref, _) => {
                 if &named_prop_ref.property_key == "transform" {
                     let prop_ref = document.resolve_named_prop_ref(owner, named_prop_ref).unwrap();
                     return self.get_entity_transform(document, &prop_ref.entity_id).clone();
