@@ -42,7 +42,7 @@ impl TransformSubSystem {
         };
         let mat = {
             let mat = self.pon_to_matrix(document, entity_id, &expr);
-            document.set_property(entity_id, "transformed", mat.to_pon()).unwrap();
+            document.set_property(entity_id, "transformed", Pon::Matrix4(mat)).unwrap();
             mat
         };
 
